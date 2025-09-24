@@ -1,148 +1,225 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Neon Runner</title>
   <style>
-    body {
-      background: black;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-    canvas {
-      background: black;
-      display: block;
-      margin: 0 auto;
-      box-shadow: 0 0 0 6px magenta;
-    }
-    #info {
-      color: cyan;
-      font-weight: bold;
-      margin: 10px;
-    }
-    #score, #highscore {
-      margin: 5px;
-    }
+    :root{--bg:#000;--player:#00f9ff;--ob:#ff00f0;--ui:#ffffff}
+    html,body{height:100%;margin:0;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,Arial,sans-serif}
+    canvas{background:transparent;display:block;border-radius:8px;box-shadow:0 0 0 6px var(--ob)}
+    .wrapper{display:flex;flex-direction:column;align-items:center;gap:10px}
+    .hud{color:var(--ui);display:flex;gap:20px;font-weight:600}
+    .btn{background:#111;border:1px solid #222;color:var(--ui);padding:8px 12px;border-radius:6px;cursor:pointer}
+    .info{color:var(--player);font-size:14px;font-weight:bold;margin-bottom:8px;text-align:center}
   </style>
 </head>
 <body>
-  <div id="info">Controls: Space / Up Arrow / Click / Tap to jump</div>
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
-  <div id="score">Score: 0</div>
-  <div id="highscore">High Score: 0</div>
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+  <div class="wrapper">
+    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed ×1.1 each avoid.</div>
+    <canvas id="game" width="800" height="420"></canvas>
+    <div class="hud">
+      <div id="score">Score: 0</div>
+      <div id="speed">Speed: 300 px/s</div>
+      <button id="restart" class="btn">Restart</button>
+    </div>
+  </div>
 
-    const player = { x: 50, y: 0, size: 30, dy: 0, jumping: false };
-    player.y = canvas.height - player.size;
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
 
-    let obstacles = [];
-    const obstacleWidth = 40; // fixed width
-    const obstacleHeight = 40;
-    let speed = 4;
-    const gravity = 0.6;
-    const jumpPower = -12;
-    let score = 0;
-    let highScore = parseInt(localStorage.getItem("neonRunnerHighScore")) || 0;
+  // Player
+  const player = {
+    x: 120,
+    y: H - 90,
+    size: 40,
+    vy: 0,
+    gravity: 1600, // px/s^2
+    jumpVel: -650,
+    onGround: true
+  };
 
-    document.getElementById("highscore").textContent = "High Score: " + highScore;
+  // Obstacles
+  let obstacles = [];
+  let baseObstacleSpeed = 300; // px/s
+  let obstacleSpeed = baseObstacleSpeed;
+  const spawnGap = 1500; // ms between spawns at speed = base
+  let lastSpawn = 0;
 
-    function drawPlayer() {
-      ctx.fillStyle = "cyan";
-      ctx.fillRect(player.x, player.y, player.size, player.size);
+  let lastTime = performance.now();
+  let running = true;
+  let score = 0;
+
+  const scoreEl = document.getElementById('score');
+  const speedEl = document.getElementById('speed');
+  const restartBtn = document.getElementById('restart');
+
+  function spawnObstacle(){
+    const h = 30 + Math.random()*80;
+    const w = 20 + Math.random()*50;
+    const y = H - 60 - h; // ground offset 60
+    obstacles.push({x: W + 20, y, w, h, counted:false});
+  }
+
+  function reset(){
+    obstacles = [];
+    obstacleSpeed = baseObstacleSpeed;
+    lastSpawn = performance.now();
+    score = 0;
+    player.y = H - 90;
+    player.vy = 0;
+    player.onGround = true;
+    running = true;
+    lastTime = performance.now();
+    updateHUD();
+  }
+
+  function updateHUD(){
+    scoreEl.textContent = 'Score: ' + score;
+    speedEl.textContent = 'Speed: ' + Math.round(obstacleSpeed) + ' px/s';
+  }
+
+  function jump(){
+    if(player.onGround){
+      player.vy = player.jumpVel;
+      player.onGround = false;
+    }
+  }
+
+  function rectsCollide(a,b){
+    return !(a.x + a.size < b.x || a.x > b.x + b.w || a.y + a.size < b.y || a.y > b.y + b.h);
+  }
+
+  function gameOver(){
+    running = false;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px Arial';
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText('GAME OVER', W/2, H/2 - 10);
+    ctx.font = '16px Arial';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Score: ' + score, W/2, H/2 + 20);
+    ctx.restore();
+  }
+
+  function update(dt){
+    // player physics
+    player.vy += player.gravity * dt;
+    player.y += player.vy * dt;
+    const groundY = H - 60 - player.size; // ground top
+    if(player.y >= groundY){
+      player.y = groundY;
+      player.vy = 0;
+      player.onGround = true;
     }
 
-    function drawObstacles() {
-      ctx.fillStyle = "magenta";
-      obstacles.forEach(ob => {
-        ctx.fillRect(ob.x, ob.y - obstacleHeight, obstacleWidth, obstacleHeight);
-      });
+    // spawn logic: spawn gap scales inversely with speed so it feels natural
+    const now = performance.now();
+    const spawnInterval = Math.max(500, spawnGap * (baseObstacleSpeed / obstacleSpeed));
+    if(now - lastSpawn > spawnInterval){
+      spawnObstacle();
+      lastSpawn = now;
     }
 
-    function updateObstacles() {
-      for (let i = 0; i < obstacles.length; i++) {
-        const ob = obstacles[i];
-        ob.x -= speed;
+    // update obstacles
+    for(let i=obstacles.length-1;i>=0;i--){
+      const ob = obstacles[i];
+      ob.x -= obstacleSpeed * dt;
 
-        // Collision detection
-        if (player.x < ob.x + obstacleWidth &&
-            player.x + player.size > ob.x &&
-            player.y < ob.y &&
-            player.y + player.size > ob.y - obstacleHeight) {
-          gameOver();
-        }
-
-        // Passed obstacle
-        if (ob.x + obstacleWidth < 0) {
-          obstacles.splice(i, 1);
-          i--;
-          score++;
-          speed += 0.1; // increase speed linearly
-          document.getElementById("score").textContent = "Score: " + score;
-        }
+      // scoring: if obstacle passed player and not counted
+      if(!ob.counted && ob.x + ob.w < player.x){
+        ob.counted = true;
+        score += 1;
+        // increase speed by 1.1x
+        obstacleSpeed *= 1.1;
+        updateHUD();
       }
-    }
 
-    function spawnObstacle() {
-      obstacles.push({ x: canvas.width, y: canvas.height });
-    }
-
-    function gameOver() {
-      if (score > highScore) {
-        highScore = score;
-        localStorage.setItem("neonRunnerHighScore", highScore);
-      }
-      document.getElementById("highscore").textContent = "High Score: " + highScore;
-      resetGame();
-    }
-
-    function resetGame() {
-      score = 0;
-      speed = 4;
-      obstacles = [];
-      player.y = canvas.height - player.size;
-      player.dy = 0;
-      player.jumping = false;
-      document.getElementById("score").textContent = "Score: " + score;
-    }
-
-    function update() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Player physics
-      player.y += player.dy;
-      if (player.y + player.size < canvas.height) {
-        player.dy += gravity;
-      } else {
-        player.y = canvas.height - player.size;
-        player.dy = 0;
-        player.jumping = false;
+      // collision
+      const playerRect = {x:player.x,y:player.y,size:player.size};
+      if(rectsCollide(playerRect, ob)){
+        running = false;
       }
 
-      drawPlayer();
-      drawObstacles();
-      updateObstacles();
+      // remove off-screen
+      if(ob.x + ob.w < -50) obstacles.splice(i,1);
+    }
+  }
 
-      requestAnimationFrame(update);
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // background grid subtle
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,W,H);
+
+    // ground
+    ctx.fillStyle = '#070707';
+    ctx.fillRect(0, H - 60, W, 60);
+
+    // draw player (neon cyan) with glow effect
+    ctx.save();
+    ctx.shadowColor = '#00f9ff';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#00f9ff';
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+    ctx.restore();
+
+    // obstacles (neon magenta)
+    for(const ob of obstacles){
+      ctx.save();
+      ctx.shadowColor = '#ff00f0';
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = '#ff00f0';
+      ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+      ctx.restore();
     }
 
-    function jump() {
-      if (!player.jumping) {
-        player.dy = jumpPower;
-        player.jumping = true;
-      }
+    // small UI in canvas corner
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('Score: ' + score, 12, 18);
+    ctx.fillText('Speed: ' + Math.round(obstacleSpeed) + ' px/s', 12, 34);
+  }
+
+  function loop(now){
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    if(running){
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    } else {
+      draw();
+      gameOver();
     }
+  }
 
-    document.addEventListener("keydown", e => {
-      if (e.code === "Space" || e.code === "ArrowUp") jump();
-    });
-    document.addEventListener("mousedown", jump);
-    document.addEventListener("touchstart", jump);
+  // input
+  window.addEventListener('keydown', e => {
+    if(e.code === 'Space' || e.code === 'ArrowUp'){
+      e.preventDefault();
+      jump();
+    }
+  });
+  canvas.addEventListener('mousedown', e => { jump(); });
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); });
 
-    setInterval(spawnObstacle, 1500);
-    update();
-  </script>
+  restartBtn.addEventListener('click', () => { reset(); requestAnimationFrame(loop); });
+
+  // initial
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
 </body>
 </html>
