@@ -16,7 +16,7 @@
 </head>
 <body>
   <div class="wrapper">
-    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed ×1.1 each avoid.</div>
+    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed +0.1 each avoid. Down Arrow — Slam down.</div>
     <canvas id="game" width="800" height="420"></canvas>
     <div class="hud">
       <div id="score">Score: 0</div>
@@ -60,7 +60,7 @@
 
   function spawnObstacle(){
     const h = 30 + Math.random()*80;
-    const w = 20 + Math.random()*50;
+    const w = 25; // FIXED width
     const y = H - 60 - h; // ground offset 60
     obstacles.push({x: W + 20, y, w, h, counted:false});
   }
@@ -80,13 +80,19 @@
 
   function updateHUD(){
     scoreEl.textContent = 'Score: ' + score;
-    speedEl.textContent = 'Speed: ' + Math.round(obstacleSpeed) + ' px/s';
+    speedEl.textContent = 'Speed: ' + obstacleSpeed.toFixed(1) + ' px/s';
   }
 
   function jump(){
     if(player.onGround){
       player.vy = player.jumpVel;
       player.onGround = false;
+    }
+  }
+
+  function slamDown(){
+    if(!player.onGround){
+      player.vy = 1000; // strong downward velocity
     }
   }
 
@@ -121,7 +127,7 @@
       player.onGround = true;
     }
 
-    // spawn logic: spawn gap scales inversely with speed so it feels natural
+    // spawn logic
     const now = performance.now();
     const spawnInterval = Math.max(500, spawnGap * (baseObstacleSpeed / obstacleSpeed));
     if(now - lastSpawn > spawnInterval){
@@ -134,12 +140,12 @@
       const ob = obstacles[i];
       ob.x -= obstacleSpeed * dt;
 
-      // scoring: if obstacle passed player and not counted
+      // scoring
       if(!ob.counted && ob.x + ob.w < player.x){
         ob.counted = true;
         score += 1;
-        // increase speed by 1.1x
-        obstacleSpeed *= 1.1;
+        // increase speed by +0.1
+        obstacleSpeed += 0.1;
         updateHUD();
       }
 
@@ -157,7 +163,7 @@
   function draw(){
     ctx.clearRect(0,0,W,H);
 
-    // background grid subtle
+    // background
     ctx.fillStyle = '#000';
     ctx.fillRect(0,0,W,H);
 
@@ -165,7 +171,7 @@
     ctx.fillStyle = '#070707';
     ctx.fillRect(0, H - 60, W, 60);
 
-    // draw player (neon cyan) with glow effect
+    // player
     ctx.save();
     ctx.shadowColor = '#00f9ff';
     ctx.shadowBlur = 18;
@@ -173,7 +179,7 @@
     ctx.fillRect(player.x, player.y, player.size, player.size);
     ctx.restore();
 
-    // obstacles (neon magenta)
+    // obstacles
     for(const ob of obstacles){
       ctx.save();
       ctx.shadowColor = '#ff00f0';
@@ -183,12 +189,12 @@
       ctx.restore();
     }
 
-    // small UI in canvas corner
+    // UI
     ctx.fillStyle = '#fff';
     ctx.font = '12px Arial';
     ctx.textAlign = 'left';
     ctx.fillText('Score: ' + score, 12, 18);
-    ctx.fillText('Speed: ' + Math.round(obstacleSpeed) + ' px/s', 12, 34);
+    ctx.fillText('Speed: ' + obstacleSpeed.toFixed(1) + ' px/s', 12, 34);
   }
 
   function loop(now){
@@ -209,6 +215,10 @@
     if(e.code === 'Space' || e.code === 'ArrowUp'){
       e.preventDefault();
       jump();
+    }
+    if(e.code === 'ArrowDown'){
+      e.preventDefault();
+      slamDown();
     }
   });
   canvas.addEventListener('mousedown', e => { jump(); });
