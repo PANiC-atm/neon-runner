@@ -16,10 +16,11 @@
 </head>
 <body>
   <div class="wrapper">
-    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed +0.1 each avoid. Down Arrow — Slam down.</div>
+    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Down Arrow — Slam Down. Avoid magenta obstacles. Speed +10 each avoid.</div>
     <canvas id="game" width="800" height="420"></canvas>
     <div class="hud">
       <div id="score">Score: 0</div>
+      <div id="highscore">High Score: 0</div>
       <div id="speed">Speed: 300 px/s</div>
       <button id="restart" class="btn">Restart</button>
     </div>
@@ -39,7 +40,7 @@
     size: 40,
     vy: 0,
     gravity: 1600, // px/s^2
-    jumpVel: -650,
+    jumpVel: -900, // higher + faster jump
     onGround: true
   };
 
@@ -53,15 +54,17 @@
   let lastTime = performance.now();
   let running = true;
   let score = 0;
+  let highScore = parseInt(localStorage.getItem('neonrunner_highscore') || '0', 10);
 
   const scoreEl = document.getElementById('score');
+  const highScoreEl = document.getElementById('highscore');
   const speedEl = document.getElementById('speed');
   const restartBtn = document.getElementById('restart');
 
   function spawnObstacle(){
     const h = 30 + Math.random()*80;
-    const w = 25; // FIXED width
-    const y = H - 60 - h; // ground offset 60
+    const w = 25; // fixed width
+    const y = H - 60 - h; 
     obstacles.push({x: W + 20, y, w, h, counted:false});
   }
 
@@ -80,6 +83,7 @@
 
   function updateHUD(){
     scoreEl.textContent = 'Score: ' + score;
+    highScoreEl.textContent = 'High Score: ' + highScore;
     speedEl.textContent = 'Speed: ' + obstacleSpeed.toFixed(1) + ' px/s';
   }
 
@@ -92,7 +96,7 @@
 
   function slamDown(){
     if(!player.onGround){
-      player.vy = 1000; // strong downward velocity
+      player.vy = 1000; 
     }
   }
 
@@ -102,6 +106,10 @@
 
   function gameOver(){
     running = false;
+    if(score > highScore){
+      highScore = score;
+      localStorage.setItem('neonrunner_highscore', highScore);
+    }
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0,0,W,H);
@@ -113,6 +121,7 @@
     ctx.font = '16px Arial';
     ctx.fillStyle = '#fff';
     ctx.fillText('Score: ' + score, W/2, H/2 + 20);
+    ctx.fillText('High Score: ' + highScore, W/2, H/2 + 45);
     ctx.restore();
   }
 
@@ -120,7 +129,7 @@
     // player physics
     player.vy += player.gravity * dt;
     player.y += player.vy * dt;
-    const groundY = H - 60 - player.size; // ground top
+    const groundY = H - 60 - player.size; 
     if(player.y >= groundY){
       player.y = groundY;
       player.vy = 0;
@@ -144,8 +153,7 @@
       if(!ob.counted && ob.x + ob.w < player.x){
         ob.counted = true;
         score += 1;
-        // increase speed by +0.1
-        obstacleSpeed += 0.1;
+        obstacleSpeed += 10; // now adds 10
         updateHUD();
       }
 
@@ -194,7 +202,8 @@
     ctx.font = '12px Arial';
     ctx.textAlign = 'left';
     ctx.fillText('Score: ' + score, 12, 18);
-    ctx.fillText('Speed: ' + obstacleSpeed.toFixed(1) + ' px/s', 12, 34);
+    ctx.fillText('High Score: ' + highScore, 12, 34);
+    ctx.fillText('Speed: ' + obstacleSpeed.toFixed(1) + ' px/s', 12, 50);
   }
 
   function loop(now){
