@@ -16,210 +16,102 @@
 </head>
 <body>
   <div class="wrapper">
-    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed ×1.1 each avoid.</div>
+    <div class="info">Controls: Space / Up Arrow / Click or Tap — Jump. Avoid magenta obstacles. Speed +0.1 each avoid.</div>
     <canvas id="game" width="800" height="420"></canvas>
     <div class="hud">
       <div id="score">Score: 0</div>
-      <div id="speed">Speed: 300 px/s</div>
-      <button id="restart" class="btn">Restart</button>
+      <div id="highscore">High Score: 0</div>
     </div>
   </div>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-<script>
-(() => {
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
+    const player = {x:50,y:canvas.height-50,size:30,dy:0,jumping:false};
+    const gravity = 0.8;
+    const jumpPower = -12;
 
-  // Player
-  const player = {
-    x: 120,
-    y: H - 90,
-    size: 40,
-    vy: 0,
-    gravity: 1600, // px/s^2
-    jumpVel: -650,
-    onGround: true
-  };
+    let obstacles = [];
+    const obstacleWidth = 40;
+    const obstacleHeight = 40;
+    let obstacleSpeed = 4;
+    let score = 0;
+    let highScore = parseInt(localStorage.getItem("neonRunnerHighScore")) || 0;
+    document.getElementById("highscore").innerText = "High Score: " + highScore;
 
-  // Obstacles
-  let obstacles = [];
-  let baseObstacleSpeed = 300; // px/s
-  let obstacleSpeed = baseObstacleSpeed;
-  const spawnGap = 1500; // ms between spawns at speed = base
-  let lastSpawn = 0;
-
-  let lastTime = performance.now();
-  let running = true;
-  let score = 0;
-
-  const scoreEl = document.getElementById('score');
-  const speedEl = document.getElementById('speed');
-  const restartBtn = document.getElementById('restart');
-
-  function spawnObstacle(){
-    const h = 30 + Math.random()*80;
-    const w = 20 + Math.random()*50;
-    const y = H - 60 - h; // ground offset 60
-    obstacles.push({x: W + 20, y, w, h, counted:false});
-  }
-
-  function reset(){
-    obstacles = [];
-    obstacleSpeed = baseObstacleSpeed;
-    lastSpawn = performance.now();
-    score = 0;
-    player.y = H - 90;
-    player.vy = 0;
-    player.onGround = true;
-    running = true;
-    lastTime = performance.now();
-    updateHUD();
-  }
-
-  function updateHUD(){
-    scoreEl.textContent = 'Score: ' + score;
-    speedEl.textContent = 'Speed: ' + Math.round(obstacleSpeed) + ' px/s';
-  }
-
-  function jump(){
-    if(player.onGround){
-      player.vy = player.jumpVel;
-      player.onGround = false;
-    }
-  }
-
-  function rectsCollide(a,b){
-    return !(a.x + a.size < b.x || a.x > b.x + b.w || a.y + a.size < b.y || a.y > b.y + b.h);
-  }
-
-  function gameOver(){
-    running = false;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 34px Arial';
-    ctx.fillStyle = '#ffcc00';
-    ctx.fillText('GAME OVER', W/2, H/2 - 10);
-    ctx.font = '16px Arial';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('Score: ' + score, W/2, H/2 + 20);
-    ctx.restore();
-  }
-
-  function update(dt){
-    // player physics
-    player.vy += player.gravity * dt;
-    player.y += player.vy * dt;
-    const groundY = H - 60 - player.size; // ground top
-    if(player.y >= groundY){
-      player.y = groundY;
-      player.vy = 0;
-      player.onGround = true;
+    function spawnObstacle(){
+      obstacles.push({x:canvas.width,y:canvas.height-50,width:obstacleWidth,height:obstacleHeight});
     }
 
-    // spawn logic: spawn gap scales inversely with speed so it feels natural
-    const now = performance.now();
-    const spawnInterval = Math.max(500, spawnGap * (baseObstacleSpeed / obstacleSpeed));
-    if(now - lastSpawn > spawnInterval){
-      spawnObstacle();
-      lastSpawn = now;
+    function resetGame(){
+      if(score > highScore){
+        highScore = score;
+        localStorage.setItem("neonRunnerHighScore", highScore);
+      }
+      alert("Game Over! Score: " + score + " | High Score: " + highScore);
+      score = 0;
+      obstacleSpeed = 4;
+      obstacles = [];
+      player.y = canvas.height-50;
+      player.dy = 0;
+      document.getElementById("score").innerText = "Score: " + score;
+      document.getElementById("highscore").innerText = "High Score: " + highScore;
     }
 
-    // update obstacles
-    for(let i=obstacles.length-1;i>=0;i--){
-      const ob = obstacles[i];
-      ob.x -= obstacleSpeed * dt;
+    function update(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // scoring: if obstacle passed player and not counted
-      if(!ob.counted && ob.x + ob.w < player.x){
-        ob.counted = true;
-        score += 1;
-        // increase speed by 1.1x
-        obstacleSpeed *= 1.1;
-        updateHUD();
+      // Draw player
+      ctx.fillStyle = "var(--player)";
+      ctx.fillRect(player.x,player.y,player.size,player.size);
+
+      // Player physics
+      player.y += player.dy;
+      if(player.y + player.size < canvas.height){
+        player.dy += gravity;
+      } else {
+        player.y = canvas.height-player.size;
+        player.jumping = false;
       }
 
-      // collision
-      const playerRect = {x:player.x,y:player.y,size:player.size};
-      if(rectsCollide(playerRect, ob)){
-        running = false;
+      // Obstacles
+      for(let i=0;i<obstacles.length;i++){
+        let ob = obstacles[i];
+        ob.x -= obstacleSpeed;
+        ctx.fillStyle = "var(--ob)";
+        ctx.fillRect(ob.x,ob.y-ob.height,ob.width,ob.height);
+
+        // Collision
+        if(player.x < ob.x+ob.width && player.x+player.size > ob.x && player.y < ob.y && player.y+player.size > ob.y-ob.height){
+          resetGame();
+        }
+
+        // Passed obstacle
+        if(ob.x+ob.width < 0){
+          obstacles.splice(i,1);
+          score++;
+          obstacleSpeed += 0.1;
+          document.getElementById("score").innerText = "Score: " + score;
+          i--;
+        }
       }
 
-      // remove off-screen
-      if(ob.x + ob.w < -50) obstacles.splice(i,1);
-    }
-  }
-
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-
-    // background grid subtle
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0,0,W,H);
-
-    // ground
-    ctx.fillStyle = '#070707';
-    ctx.fillRect(0, H - 60, W, 60);
-
-    // draw player (neon cyan) with glow effect
-    ctx.save();
-    ctx.shadowColor = '#00f9ff';
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = '#00f9ff';
-    ctx.fillRect(player.x, player.y, player.size, player.size);
-    ctx.restore();
-
-    // obstacles (neon magenta)
-    for(const ob of obstacles){
-      ctx.save();
-      ctx.shadowColor = '#ff00f0';
-      ctx.shadowBlur = 18;
-      ctx.fillStyle = '#ff00f0';
-      ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
-      ctx.restore();
+      requestAnimationFrame(update);
     }
 
-    // small UI in canvas corner
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText('Score: ' + score, 12, 18);
-    ctx.fillText('Speed: ' + Math.round(obstacleSpeed) + ' px/s', 12, 34);
-  }
+    setInterval(spawnObstacle,1500);
+    update();
 
-  function loop(now){
-    const dt = Math.min(0.05, (now - lastTime) / 1000);
-    lastTime = now;
-    if(running){
-      update(dt);
-      draw();
-      requestAnimationFrame(loop);
-    } else {
-      draw();
-      gameOver();
+    // Controls
+    function jump(){
+      if(!player.jumping){
+        player.dy = jumpPower;
+        player.jumping = true;
+      }
     }
-  }
-
-  // input
-  window.addEventListener('keydown', e => {
-    if(e.code === 'Space' || e.code === 'ArrowUp'){
-      e.preventDefault();
-      jump();
-    }
-  });
-  canvas.addEventListener('mousedown', e => { jump(); });
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); });
-
-  restartBtn.addEventListener('click', () => { reset(); requestAnimationFrame(loop); });
-
-  // initial
-  reset();
-  requestAnimationFrame(loop);
-})();
-</script>
+    document.addEventListener("keydown",e=>{if(e.code==="Space"||e.code==="ArrowUp")jump();});
+    document.addEventListener("mousedown",jump);
+    document.addEventListener("touchstart",jump);
+  </script>
 </body>
 </html>
